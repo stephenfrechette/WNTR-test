@@ -1149,16 +1149,24 @@ class HydraulicModel(object):
                 self.leak_status[junction_id] = junction.leak_status
         for link_name, link in self._wn.links():
             link_id = self._link_name_to_id[link_name]
-            self.link_status[link_id] = link.status
+            if link.status == wntr.network.LinkStatus.opened:
+                self.link_status[link_id] = link._status
+            elif link.status == wntr.network.LinkStatus.closed:
+                self.link_status[link_id] = wntr.network.LinkStatus.closed
+            else:
+                self.link_status[link_id] = link._status
         for valve_name, valve in self._wn.links(Valve):
             valve_id = self._link_name_to_id[valve_name]
             self.valve_settings[valve_id] = valve.setting
-            self.link_status[valve_id] = valve._status
+            if valve.status == wntr.network.LinkStatus.opened:
+                self.link_status[valve_id] = valve.status
+            elif valve.status == wntr.network.LinkStatus.closed:
+                self.link_status[valve_id] = valve.status
+            else:
+                self.link_status[valve_id] = valve._status
         for pump_name, pump in self._wn.links(Pump):
             pump_id = self._link_name_to_id[pump_name]
             self.pump_speeds[pump_id] = pump.speed
-            if pump._cv_status == wntr.network.LinkStatus.closed:
-                self.link_status[pump_id] = pump._cv_status
         for link_id in self._link_ids:
             if self.link_status[link_id] == wntr.network.LinkStatus.closed:
                 self.closed_links.add(link_id)

@@ -269,7 +269,7 @@ class WNTRSimulator(WaterNetworkSimulator):
 
         self._control_log.reset()
 
-        self._align_valve_statuses()
+        # self._align_valve_statuses()
 
         for change_tuple, orig_value_control_name in change_dict.iteritems():
             orig_value = orig_value_control_name[0]
@@ -283,14 +283,14 @@ class WNTRSimulator(WaterNetworkSimulator):
 
         return changes_made
 
-    def _align_valve_statuses(self):
-        for valve_name, valve in self._wn.links(Valve):
-            if valve.status==wntr.network.LinkStatus.opened:
-                valve._status = valve.status
-                #print 'setting ',valve.name(),' _status to ',valve.status
-            elif valve.status==wntr.network.LinkStatus.closed:
-                valve._status = valve.status
-                #print 'setting ',valve.name(),' _status to ',valve.status
+    # def _align_valve_statuses(self):
+    #     for valve_name, valve in self._wn.links(Valve):
+    #         if valve.status==wntr.network.LinkStatus.opened:
+    #             valve._status = valve.status
+    #             #print 'setting ',valve.name(),' _status to ',valve.status
+    #         elif valve.status==wntr.network.LinkStatus.closed:
+    #             valve._status = valve.status
+    #             #print 'setting ',valve.name(),' _status to ',valve.status
 
     def _initialize_internal_graph(self):
         for link_name, link in self._wn.links(wntr.network.Pipe):

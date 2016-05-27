@@ -212,8 +212,8 @@ class WaterNetworkModel(object):
                     else:
                         link_has_cv = True
             
-                close_control_action = wntr.network.ControlAction(link, 'status', LinkStatus.closed)
-                open_control_action = wntr.network.ControlAction(link, 'status', LinkStatus.opened)
+                close_control_action = wntr.network.ControlAction(link, '_status', LinkStatus.closed)
+                open_control_action = wntr.network.ControlAction(link, '_status', LinkStatus.opened)
 
                 control = wntr.network.ConditionalControl((tank,'head'), np.less_equal, min_head,close_control_action)
                 control._priority = 1
@@ -262,8 +262,8 @@ class WaterNetworkModel(object):
                     else:
                         link_has_cv = True
             
-                close_control_action = wntr.network.ControlAction(link, 'status', LinkStatus.closed)
-                open_control_action = wntr.network.ControlAction(link, 'status', LinkStatus.opened)
+                close_control_action = wntr.network.ControlAction(link, '_status', LinkStatus.closed)
+                open_control_action = wntr.network.ControlAction(link, '_status', LinkStatus.opened)
             
                 control = wntr.network.ConditionalControl((tank,'head'),np.greater_equal,max_head,close_control_action)
                 control._priority = 1
@@ -375,8 +375,8 @@ class WaterNetworkModel(object):
         for pipe_name in self._check_valves:
             pipe = self.get_link(pipe_name)
 
-            close_control_action = wntr.network.ControlAction(pipe, 'status', LinkStatus.closed)
-            open_control_action = wntr.network.ControlAction(pipe, 'status', LinkStatus.opened)
+            close_control_action = wntr.network.ControlAction(pipe, '_status', LinkStatus.closed)
+            open_control_action = wntr.network.ControlAction(pipe, '_status', LinkStatus.opened)
             
             control = wntr.network._CheckValveHeadControl(self, pipe, np.greater, self._Htol, open_control_action)
             control._priority = 0
@@ -426,8 +426,8 @@ class WaterNetworkModel(object):
         pump_controls = []
         for pump_name, pump in self.links(Pump):
 
-            close_control_action = wntr.network.ControlAction(pump, '_cv_status', LinkStatus.closed)
-            open_control_action = wntr.network.ControlAction(pump, '_cv_status', LinkStatus.opened)
+            close_control_action = wntr.network.ControlAction(pump, '_status', LinkStatus.closed)
+            open_control_action = wntr.network.ControlAction(pump, '_status', LinkStatus.opened)
         
             control = wntr.network._CheckValveHeadControl(self, pump, np.greater, self._Htol, open_control_action)
             control._priority = 0
@@ -544,17 +544,17 @@ class WaterNetworkModel(object):
         if name in self._control_dict:
             raise ValueError('The name provided for the control is already used. Please either remove the control with that name first or use a different name for this control.')
 
-        target = control_object._control_action._target_obj_ref
-        target_type = type(target)
-        if target_type == wntr.network.Valve:
-            warnings.warn('Controls should not be added to valves! Note that this will become an error in the next release.')
-        if target_type == wntr.network.Link:
-            start_node_name = target_obj.start_node()
-            end_node_name = target_obj.end_node()
-            start_node = self.get_node(start_node_name)
-            end_node = self.get_node(end_node_name)
-            if type(start_node)==Tank or type(end_node)==Tank:
-                warnings.warn('Controls should not be added to links that are connected to tanks. Consider adding an additional link and using the control on it. Note that this will become an error in the next release.')
+        # target = control_object._control_action._target_obj_ref
+        # target_type = type(target)
+        # if target_type == wntr.network.Valve:
+        #     warnings.warn('Controls should not be added to valves! Note that this will become an error in the next release.')
+        # if target_type == wntr.network.Link:
+        #     start_node_name = target_obj.start_node()
+        #     end_node_name = target_obj.end_node()
+        #     start_node = self.get_node(start_node_name)
+        #     end_node = self.get_node(end_node_name)
+        #     if type(start_node)==Tank or type(end_node)==Tank:
+        #         warnings.warn('Controls should not be added to links that are connected to tanks. Consider adding an additional link and using the control on it. Note that this will become an error in the next release.')
 
         self._control_dict[name] = control_object
         control_object.name = name
@@ -574,8 +574,8 @@ class WaterNetworkModel(object):
         self.add_control(pump_name+'PowerOff'+str(start_time),control)
 
 
-        opened_action_obj = wntr.network.ControlAction(pump, 'status', LinkStatus.opened)
-        closed_action_obj = wntr.network.ControlAction(pump, 'status', LinkStatus.closed)
+        opened_action_obj = wntr.network.ControlAction(pump, '_status', LinkStatus.opened)
+        closed_action_obj = wntr.network.ControlAction(pump, '_status', LinkStatus.closed)
 
         control = wntr.network.MultiConditionalControl([(pump,'_power_outage')],[np.equal],[True], closed_action_obj)
         control._priority = 3
@@ -1989,6 +1989,7 @@ class Link(object):
         self.prev_status = None
         self._base_status = LinkStatus.opened
         self.status = LinkStatus.opened
+        self._status = LinkStatus.opened
         self.prev_flow = None
         self.flow = None
         
@@ -2479,7 +2480,6 @@ class Pump(Link):
             Where power is a fixed value in KW, while a head curve is a Curve object.
         """
         super(Pump, self).__init__(name, start_node_name, end_node_name)
-        self._cv_status = LinkStatus.opened
         self.prev_speed = None
         self.speed = 1.0
         self.curve = None
