@@ -64,26 +64,6 @@ class TestNetworkCreation(unittest.TestCase):
         self.assertAlmostEqual(j.base_head, 27.45*0.3048)
         self.assertEqual(j.head_pattern_name, None)
 
-class TestControlParsing(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(self):
-        sys.path.append(resilienceMainDir)
-        import wntr
-        self.wntr = wntr
-
-    @classmethod
-    def tearDownClass(self):
-        sys.path.remove(resilienceMainDir)
-
-    def test_control_at_time(self):
-        inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/net_test_17.inp'
-        wn = self.wntr.network.WaterNetworkModel(inp_file)
-        self.assertEqual(len(wn.controls), 6)
-        fire_times = [24*3600, 13*3600+30*60, 3*3600, 0, 12*3600, 17*3600+30*60+12]
-        for i in xrange(len(wn.controls)):
-            self.assertEqual(wn.controls[i]._fire_time, fire_times[i])
-
 class TestNetworkMethods(unittest.TestCase):
 
     @classmethod
@@ -91,6 +71,7 @@ class TestNetworkMethods(unittest.TestCase):
         sys.path.append(resilienceMainDir)
         import wntr
         from wntr.network.WaterNetworkModel import Junction, Tank, Reservoir, Pipe, Pump, Valve
+        from wntr.network.NetworkControls import ControlAction, TimeControl
         self.Junction = Junction
         self.Tank = Tank
         self.Reservoir = Reservoir
@@ -98,6 +79,8 @@ class TestNetworkMethods(unittest.TestCase):
         self.Pump = Pump
         self.Valve = Valve
         self.wntr = wntr
+        self.ControlAction = ControlAction
+        self.TimeControl = TimeControl
 
     @classmethod
     def tearDownClass(self):
@@ -188,21 +171,30 @@ class TestNetworkMethods(unittest.TestCase):
     def test_remove_node(self):
         inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/net_test_6.inp'
         wn = self.wntr.network.WaterNetworkModel(inp_file)
-        self.assertEqual(wn.conditional_controls['PUMP-3829']['open_below'][0][0],'TANK-3326')
-        self.assertAlmostEqual(wn.conditional_controls['PUMP-3829']['open_below'][0][1],5.4864)
-        self.assertEqual(wn.conditional_controls['PUMP-3829']['closed_above'][0][0],'TANK-3326')
-        self.assertAlmostEqual(wn.conditional_controls['PUMP-3829']['closed_above'][0][1],8.9916)
+
         wn.remove_node('TANK-3326')
-        for key, val in wn.conditional_controls['PUMP-3829'].iteritems():
-            self.assertEqual(val,[])
+        
         self.assertNotIn('TANK-3326',wn._nodes.keys())
         self.assertNotIn('TANK-3326',wn._graph.nodes())
 
+        
         inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/conditional_controls_test_network_1.inp'
         wn = self.wntr.network.WaterNetworkModel(inp_file)
+
+        tank1 = wn.get_node('tank1')
+        action = self.ControlAction(tank1, 'elevation', 55)
+        control = self.TimeControl(wn, 3652, 'SIM_TIME', False, action)
+        wn.add_control('tank_control', control)
+
+        controls_1 = copy.deepcopy(wn._control_dict)
+        
         wn.remove_node('tank1')
-        for key, val in wn.conditional_controls['pump1'].iteritems():
-            self.assertEqual(val,[])
+
+        controls_2 = copy.deepcopy(wn._control_dict)
+
+        self.assertEqual(True, 'tank_control' in controls_1.keys())
+        self.assertEqual(False, 'tank_control' in controls_2.keys())
+        
         self.assertNotIn('tank1',wn._nodes.keys())
         self.assertNotIn('tank1',wn._graph.nodes())
         node_list = ['junction1','res1']
@@ -210,6 +202,18 @@ class TestNetworkMethods(unittest.TestCase):
         node_list_2 = wn._nodes.keys()
         node_list_2.sort()
         self.assertEqual(node_list, node_list_2)
+
+    def test_remove_controls_for_removing_link(self):
+        inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/leak_test_network.inp'
+        wn = self.wntr.network.WaterNetworkModel(inp_file)
+        import copy
+        controls_1 = copy.deepcopy(wn._control_dict)
+        
+        wn.remove_link('21')
+
+        controls_2 = copy.deepcopy(wn._control_dict)
+        self.assertEqual(True, 'LINK21OPENIFNODE2ABOVE300.23' in controls_1.keys())
+        self.assertEqual(False, 'LINK21OPENIFNODE2ABOVE300.23' in controls_2.keys())
 
     def test_nodes(self):
         wn = self.wntr.network.WaterNetworkModel()
@@ -422,43 +426,37 @@ class TestInpFileWriter(unittest.TestCase):
     def tearDownClass(self):
         sys.path.remove(resilienceMainDir)
 
+    def test_wn(self):
+        self.assertEqual(self.wn == self.wn2, True)
+
     def test_junctions(self):
         for name, node in self.wn.nodes(self.wntr.network.Junction):
             node2 = self.wn2.get_node(name)
-            self.assertAlmostEqual(node.elevation, node2.elevation, 5)
+            self.assertEqual(node == node2, True)
             self.assertAlmostEqual(node.base_demand, node2.base_demand, 5)
 
     def test_reservoirs(self):
         for name, node in self.wn.nodes(self.wntr.network.Reservoir):
             node2 = self.wn2.get_node(name)
+            self.assertEqual(node == node2, True)
             self.assertAlmostEqual(node.base_head, node2.base_head, 5)
 
     def test_tanks(self):
         for name, node in self.wn.nodes(self.wntr.network.Tank):
             node2 = self.wn2.get_node(name)
-            self.assertAlmostEqual(node.elevation, node2.elevation, 5)
+            self.assertEqual(node == node2, True)
             self.assertAlmostEqual(node.init_level, node2.init_level, 5)
-            self.assertAlmostEqual(node.min_level, node2.min_level, 5)
-            self.assertAlmostEqual(node.max_level, node2.max_level, 5)
-            self.assertAlmostEqual(node.diameter, node2.diameter, 5)
 
     def test_pipes(self):
         for name, link in self.wn.links(self.wntr.network.Pipe):
             link2 = self.wn2.get_link(name)
-            self.assertEqual(link.start_node(), link2.start_node())
-            self.assertEqual(link.end_node(), link2.end_node())
-            self.assertAlmostEqual(link.length, link2.length, 5)
-            self.assertAlmostEqual(link.diameter, link2.diameter, 5)
-            self.assertAlmostEqual(link.roughness, link2.roughness, 5)
-            self.assertAlmostEqual(link.minor_loss, link2.minor_loss, 5)
+            self.assertEqual(link == link2, True)
             self.assertEqual(link.get_base_status(), link2.get_base_status())
 
     def test_pumps(self):
         for name, link in self.wn.links(self.wntr.network.Pump):
             link2 = self.wn2.get_link(name)
-            self.assertEqual(link.start_node(), link2.start_node())
-            self.assertEqual(link.end_node(), link2.end_node())
-            self.assertEqual(link.info_type, link2.info_type)
+            self.assertEqual(link == link2, True)
             if link.info_type=='POWER':
                 self.assertAlmostEqual(link.power, link2.power, 5)
             elif link.info_type=='HEAD':
@@ -472,16 +470,13 @@ class TestInpFileWriter(unittest.TestCase):
     def test_valves(self):
         for name, link in self.wn.links(self.wntr.network.Valve):
             link2 = self.wn2.get_link(name)
-            self.assertEqual(link.start_node(), link2.start_node())
-            self.assertEqual(link.end_node(), link2.end_node())
-            self.assertEqual(link.valve_type, link2.valve_type)
-            self.assertAlmostEqual(link.diameter, link2.diameter, 5)
+            self.assertEqual(link == link2, True)
             self.assertAlmostEqual(link.setting, link2.setting, 5)
-            self.assertAlmostEqual(link.minor_loss, link2.minor_loss, 5)
 
     def test_user_controls(self):
-        self.assertEqual(True, False)
-        #for key, val in self.wn._control_dict.iteritems():
+        for name1, control1 in self.wn._control_dict.iteritems():
+            control2 = self.wn2._control_dict[name1]
+            self.assertEqual(control1==control2, True)
 
 class TestNet3InpWriterResults(unittest.TestCase):
 
