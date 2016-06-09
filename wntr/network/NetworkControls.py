@@ -57,13 +57,13 @@ class BaseControlAction(object):
     def __init__(self):
         pass
 
-    def FireControlAction(self, control_name):
+    def FireControlAction(self, control_name, log, t):
         """ 
         This method is called to fire the corresponding control action.
         """
-        return self._FireControlActionImpl(control_name)
+        return self._FireControlActionImpl(control_name, log, t)
 
-    def _FireControlActionImpl(self):
+    def _FireControlActionImpl(self, log, t):
         """
         Implements the specific action that will be fired when FireControlAction is called. This method should be
         overridden in derived classes.
@@ -97,6 +97,8 @@ class ControlAction(BaseControlAction):
         self._attribute = attribute
         self._value = value
 
+        
+
         #if (isinstance(target_obj, wntr.network.Valve) or (isinstance(target_obj, wntr.network.Pipe) and target_obj.cv)) and attribute=='status':
         #    raise ValueError('You may not add controls to valves or pipes with check valves.')
 
@@ -117,7 +119,7 @@ class ControlAction(BaseControlAction):
                 
            
 
-    def _FireControlActionImpl(self, control_name):
+    def _FireControlActionImpl(self, control_name, log, t):
         """
         This method overrides the corresponding method from the BaseControlAction class. Here, it changes
         target_obj.attribute to the provided value.
@@ -130,15 +132,21 @@ class ControlAction(BaseControlAction):
                              'This may be because a target_obj was added, but later the object itself was deleted.')
         if not hasattr(target, self._attribute):
             raise ValueError('attribute specified in ControlAction is not valid for targe_obj')
-        
+
+        setattr(target, self._attribute, self._value)
+
+        log.add(t, target, self._attribute, self._value, control_name)
+
+        """
         orig_value = getattr(target, self._attribute)
         if orig_value == self._value:
             return False, None, None
         else:
             #logger.debug('control {0} setting {1} {2} to {3}'.format(control_name, target.name(),self._attribute,self._value))
-            setattr(target, self._attribute, self._value)
+            self._control_log.add()
             return True, (target, self._attribute), orig_value
-
+        """
+        
 class Control(object):
     """
     This is the base class for all control objects. Control objects are used to check the conditions under which a
@@ -200,7 +208,7 @@ class Control(object):
                                   'This method must be implemented in any '
                                   ' class derived from Control.')  
 
-    def FireControlAction(self, wnm, priority):
+    def FireControlAction(self, wnm, priority, log, t):
         """
         This method is called to fire the control action after a call to IsControlActionRequired indicates that an
         action is required.
@@ -214,9 +222,9 @@ class Control(object):
         priority : int
             A priority value. The action is only fired if priority == self._priority.
         """
-        return self._FireControlActionImpl(wnm, priority)
+        return self._FireControlActionImpl(wnm, priority, log, t)
 
-    def _FireControlActionImpl(self, wnm, priority):
+    def _FireControlActionImpl(self, wnm, priority, log, t):
         """
         This is the method that should be overridden in derived classes to implement the action of firing the control.
 
@@ -354,7 +362,7 @@ class TimeControl(Control):
 
         return (False, None)
 
-    def _FireControlActionImpl(self, wnm, priority):
+    def _FireControlActionImpl(self, wnm, priority, log, t):
         """
         This implements the derived method from Control.
 
@@ -368,13 +376,10 @@ class TimeControl(Control):
         if self._control_action is None:
             raise ValueError('_control_action is None inside TimeControl')
 
-        if self._priority != priority:
-            return False, None, None
-
-        change_flag, change_tuple, orig_value = self._control_action.FireControlAction(self.name)
-        if self._daily_flag:
-            self._fire_time += 24*3600
-        return change_flag, change_tuple, orig_value
+        if self._priority == priority:
+            self._control_action.FireControlAction(self.name, log, t)
+            if self._daily_flag:
+                self._fire_time += 24*3600
 
 
 class ConditionalControl(Control):
@@ -524,7 +529,7 @@ class ConditionalControl(Control):
             else:
                 return (False, None)
 
-    def _FireControlActionImpl(self, wnm, priority):
+    def _FireControlActionImpl(self, wnm, priority, log, t):
         """
         This implements the derived method from Control.
 
@@ -535,11 +540,9 @@ class ConditionalControl(Control):
         priority : int
             A priority value. The action is only fired if priority == self._priority.
         """
-        if self._priority!=priority:
-            return False, None, None
+        if self._priority == priority:
+            self._control_action.FireControlAction(self.name, log, t)
 
-        change_flag, change_tuple, orig_value = self._control_action.FireControlAction(self.name)
-        return change_flag, change_tuple, orig_value
 
 class MultiConditionalControl(Control):
     """
@@ -658,7 +661,7 @@ class MultiConditionalControl(Control):
         else:
             return (False, None)
 
-    def _FireControlActionImpl(self, wnm, priority):
+    def _FireControlActionImpl(self, wnm, priority, log, t):
         """
         This implements the derived method from Control.
 
@@ -669,11 +672,8 @@ class MultiConditionalControl(Control):
         priority : int
             A priority value. The action is only fired if priority == self._priority.
         """
-        if self._priority!=priority:
-            return False, None, None
-
-        change_flag, change_tuple, orig_value = self._control_action.FireControlAction(self.name)
-        return change_flag, change_tuple, orig_value
+        if self._priority == priority:
+            self._control_action.FireControlAction(self.name, log, t)
 
 class _CheckValveHeadControl(Control):
     """
@@ -711,13 +711,10 @@ class _CheckValveHeadControl(Control):
             return (True, 0)
         return (False, None)
         
-    def _FireControlActionImpl(self, wnm, priority):
-        if self._priority!=priority:
-            return False, None, None
-
-        change_flag, change_tuple, orig_value = self._control_action.FireControlAction(self.name)
-        return change_flag, change_tuple, orig_value
-
+    def _FireControlActionImpl(self, wnm, priority, log, t):
+        if self._priority == priority:
+            self._control_action.FireControlAction(self.name, log, t)
+            
 class _PRVControl(Control):
     """
 
@@ -780,14 +777,11 @@ class _PRVControl(Control):
                 return (True, 0)
             return (False, None)
 
-    def _FireControlActionImpl(self, wnm, priority):
+    def _FireControlActionImpl(self, wnm, priority, log, t):
         """
         This implements the derived method from Control. Please see
         the Control class and the documentation for this class.
         """
-        if self._priority!=priority:
-            return False, None, None
-
-        change_flag, change_tuple, orig_value = self._action_to_fire.FireControlAction(self.name)
-        return change_flag, change_tuple, orig_value
+        if self._priority==priority:
+            self._action_to_fire.FireControlAction(self.name, log, t)
 
