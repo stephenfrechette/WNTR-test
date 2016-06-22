@@ -73,7 +73,7 @@ class ControlLogger(object):
 
         for tank_name, tank in wn._tanks.iteritems():
             self.times[tank]['leak_status'] = [-1]
-            self.values[tank]['leak_satatus'] = [tank.leak_status]
+            self.values[tank]['leak_status'] = [tank.leak_status]
             self.control_names[tank]['leak_status'] = [None]
 
             self.times[tank]['leak_area'] = [-1]
@@ -127,13 +127,4 @@ class ControlLogger(object):
         
  
     def get_log(self):
-        times = []
-        for obj_name, time_dict in self.times.iteritems():
-            for attr, time_list in time_dict.iteritems():
-                time_list.pop(0)
-                times = times + time_list
-                self.values[obj_name][attr].pop(0)
-                self.control_names[obj_name][attr].pop(0)
-        times = list(set(times))
-        times.sort()
-        log = pandas.DataFrame(index)
+        pass
