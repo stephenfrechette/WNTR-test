@@ -345,7 +345,7 @@ class WaterNetworkModel(object):
         self._num_reservoirs += 1
 
     def add_pipe(self, name, start_node_name, end_node_name, length=304.8,
-                 diameter=0.3048, roughness=100, minor_loss=0.0, status='OPEN', check_valve_flag=False):
+                 diameter=0.3048, roughness=100.0, minor_loss=0.0, status='OPEN', check_valve_flag=False):
         """
         Method to add pipe to a water network object.
 
@@ -487,7 +487,7 @@ class WaterNetworkModel(object):
             Diameter of the valve.
             Internal units must be meters (m)
         valve_type : string
-            Type of valve. Options are 'PRV', etc
+            Type of valve. Options are 'PRV', 'PSV', 'FCV' etc
         minor_loss : float
             Pipe minor loss coefficient
         setting : float or string
@@ -516,9 +516,18 @@ class WaterNetworkModel(object):
             close_control_action = wntr.network.ControlAction(valve, '_status', LinkStatus.closed)
             open_control_action = wntr.network.ControlAction(valve, '_status', LinkStatus.opened)
             active_control_action = wntr.network.ControlAction(valve, '_status', LinkStatus.active)
-        
-            control = wntr.network._PRVControl(self, valve, self._Htol, self._Qtol, close_control_action, open_control_action, active_control_action)
-            control.name = valve.name()+' prv control'
+
+            control = []
+
+            if valve.valve_type == 'PRV':
+                control = wntr.network._PRVControl(self, valve, self._Htol, self._Qtol, close_control_action, open_control_action, active_control_action)
+                control.name = valve.name() + ' prv control'
+            if valve.valve_type == 'PSV':
+                control = wntr.network._PSVControl(self, valve, self._Htol, self._Qtol, close_control_action, open_control_action, active_control_action)
+                control.name = valve.name() + ' psv control'
+            if valve.valve_type == 'FCV':
+                control = wntr.network._FCVControl(self, valve, open_control_action, active_control_action)
+                control.name = valve.name()+'fcv control'
             valve_controls.append(control)
 
         return valve_controls
@@ -668,8 +677,8 @@ class WaterNetworkModel(object):
         if with_control:
             x=[]
             for control_name, control in self._control_dict.iteritems():
-                if type(control)==wntr.network._PRVControl:
-                    if link==control._close_control_action._target_obj_ref:
+                if type(control)==wntr.network._PRVControl or type(control) == wntr.network._PSVControl or type(control) == wntr.network._FCVControl:
+                    if link==control._active_control_action._target_obj_ref:
                         warnings.warn('Control '+control_name+' is being removed along with link '+name)
                         x.append(control_name)
                 else:
@@ -680,8 +689,8 @@ class WaterNetworkModel(object):
                 self.remove_control(i)
         else:
             for control_name, control in self._control_dict.iteritems():
-                if type(control)==wntr.network._PRVControl:
-                    if link==control._close_control_action._target_obj_ref:
+                if type(control)==wntr.network._PRVControl or type(control) == wntr.network._PSVControl or type(control) == wntr.network._FCVControl:
+                    if link==control._active_control_action._target_obj_ref:
                         warnings.warn('A link is being removed that is the target object of a control. However, the control is not being removed.')
                 else:
                     if link == control._control_action._target_obj_ref:
@@ -2605,7 +2614,7 @@ class Pipe(Link):
     Pipe class that is inherited from Link
     """
     def __init__(self, name, start_node_name, end_node_name, length=304.8,
-                 diameter=0.3048, roughness=100, minor_loss=0.00, status='OPEN', check_valve_flag=False):
+                 diameter=0.3048, roughness=100.0, minor_loss=0.00, status='OPEN', check_valve_flag=False):
         """
         Parameters
         ----------
@@ -2750,8 +2759,8 @@ class Pump(Link):
 
         # 1-Point curve
         if self.curve.num_points == 1:
-            H_1 = self.curve.points[0][1]
-            Q_1 = self.curve.points[0][0]
+            H_1 = self.curve.points[0][1]*(self.speed ** 2)
+            Q_1 = self.curve.points[0][0]*self.speed
             A = (4.0/3.0)*H_1
             B = (1.0/3.0)*(H_1/(Q_1**2))
             C = 2
@@ -2766,7 +2775,7 @@ class Pump(Link):
 
             # When the first points is at zero flow
             if Q_1 == 0.0:
-                A = H_1
+                A = H_1*self.speed
                 C = math.log((H_1 - H_2)/(H_1 - H_3))/math.log(Q_2/Q_3)
                 B = (H_1 - H_2)/(Q_2**C)
             else:
@@ -2820,7 +2829,7 @@ class Valve(Link):
             Diameter of the valve.
             Internal units must be meters (m)
         valve_type : string
-            Type of valve. Options are 'PRV', etc
+            Type of valve. Options are 'PRV', 'PSV', 'FCV', etc
         minor_loss : float
             Pipe minor loss coefficient
         setting : float or string

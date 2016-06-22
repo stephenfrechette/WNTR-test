@@ -6,8 +6,8 @@ import sys
 # __file__ fails if someone does os.chdir() before
 # sys.argv[0] also fails because it doesn't not always contains the path
 import os, inspect
-resilienceMainDir = os.path.abspath( 
-    os.path.join( os.path.dirname( os.path.abspath( inspect.getfile( 
+resilienceMainDir = os.path.abspath(
+    os.path.join( os.path.dirname( os.path.abspath( inspect.getfile(
         inspect.currentframe() ) ) ), '..', '..' ))
 
 
@@ -19,13 +19,13 @@ class TestTimeControls(unittest.TestCase):
         import wntr
         self.wntr = wntr
 
-        inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/time_controls_test_network.inp'
+        inp_file = resilienceMainDir + '/wntr/tests/networks_for_testing/time_controls_test_network.inp'
         self.wn = self.wntr.network.WaterNetworkModel(inp_file)
         self.wn.options.report_timestep = 'all'
         for jname, j in self.wn.nodes(self.wntr.network.Junction):
             j.minimum_pressure = 0.0
             j.nominal_pressure = 15.0
-        
+
         sim = self.wntr.sim.WNTRSimulator(self.wn, pressure_driven=True)
         self.results = sim.run_sim()
 
@@ -143,7 +143,6 @@ class TestTankControls(unittest.TestCase):
         self.assertEqual(tank_level_dropped_flag, True)
 
     def test_reopen_pipe_after_tank_fills_back_up(self):
-        """
         inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/tank_controls_test_network2.inp'
         wn = self.wntr.network.WaterNetworkModel(inp_file)
         for jname, j in wn.nodes(self.wntr.network.Junction):
@@ -164,8 +163,6 @@ class TestTankControls(unittest.TestCase):
                     tank_refilled_flag = True
         self.assertEqual(tank_level_dropped_flag, True)
         self.assertEqual(tank_refilled_flag, True)
-        """
-        self.assertEqual(True, False)
         
 class TestValveControls(unittest.TestCase):
     @classmethod
@@ -276,21 +273,25 @@ class TestControlCombinations(unittest.TestCase):
     def test_close_by_condition_open_by_time_reclose(self):
         inp_file = resilienceMainDir+'/wntr/tests/networks_for_testing/control_comb_3.inp'
         wn = self.wntr.network.WaterNetworkModel(inp_file)
+        wn.options.report_timestep = 'all'
         for jname, j in wn.nodes(self.wntr.network.Junction):
             j.minimum_pressure = 0.0
             j.nominal_pressure = 15.0
         sim = self.wntr.sim.WNTRSimulator(wn, pressure_driven = True)
         results = sim.run_sim()
+        print results.node[:,:,'tank1']
 
         flag1 = False
         for t in results.link.major_axis:
-            if t > 0 and (results.node.at['head',t-3600,'tank1'] + (results.node.at['demand',t-3600,'tank1']*3600 * 4 / (3.14159 * wn._tanks['tank1'].diameter**2))) <= 30.0:
+            if results.node.at['head',t,'tank1'] <= 30.0:
+                print t
                 flag1 = True
             if t==5*3600:
                 flag1=False
             if flag1 == False:
                 self.assertGreaterEqual(results.link.at['flowrate',t,'pipe1'], 0.001)
             elif flag1 == True:
+                print t
                 self.assertAlmostEqual(results.link.at['flowrate',t,'pipe1'], 0.0)
 
         self.assertEqual(flag1, True)

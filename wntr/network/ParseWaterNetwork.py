@@ -401,9 +401,16 @@ class ParseWaterNetwork(object):
                     #continue
                 if float(current[6]) != 0:
                     warnings.warn('Currently, only the EpanetSimulator supports non-zero minor losses in valves.')
-                wn.add_valve(current[0], current[1], current[2], convert('Pipe Diameter', inp_units, float(current[3])),
-                                                                 current[4].upper(), float(current[6]),
-                                                                 convert('Pressure', inp_units, float(current[5].upper())))
+                if valve_type == 'PRV' or valve_type == 'PSV':
+                    wn.add_valve(current[0], current[1], current[2],
+                                 convert('Pipe Diameter', inp_units, float(current[3])),
+                                 current[4].upper(), float(current[6]),
+                                 convert('Pressure', inp_units, float(current[5].upper())))
+                if valve_type == 'FCV':
+                    wn.add_valve(current[0], current[1], current[2],
+                                 convert('Pipe Diameter', inp_units, float(current[3])),
+                                 current[4].upper(), float(current[6]),
+                                 convert('Flow', inp_units, float(current[5].upper())))
 
         f.close()
 
@@ -589,13 +596,17 @@ class ParseWaterNetwork(object):
                 link_name = current[1]
                 #print (link_name in wn._links.keys())
                 link = wn.get_link(link_name)
-                if type(current[2]) == str:
+                number = is_number(current[2])
+
+                if number == False:
                     status = wntr.network.LinkStatus.str_to_status(current[2])
                     action_obj = wntr.network.ControlAction(link, 'status', status)
-                elif type(current[2]) == float or type(current[2]) == int:
+                elif number == True:
                     if isinstance(link, wntr.network.Pump):
                         warnings.warn('Currently, pump speed settings are only supported in the EpanetSimulator.')
-                        continue
+                        status = float(current[2])
+                        action_obj = wntr.network.ControlAction(link, 'speed', status)
+                        #continue
                     elif isinstance(link, wntr.network.Valve):
                         if link.valve_type != 'PRV':
                             warnings.warn('Currently, valves of type '+link.valve_type+' are only supported in the EpanetSimulator.')
@@ -629,8 +640,6 @@ class ParseWaterNetwork(object):
                         control_name = control_name + current[i]
                     control_name = control_name + str(round(threshold,2))
                 else:
-                    if len(current) != 6:
-                        warnings.warn('Using CLOCKTIME in time controls is currently only supported by the EpanetSimulator.')
                     if len(current) == 6: # at time
                         if ':' in current[5]:
                             fire_time = str_time_to_sec(current[5])
@@ -644,6 +653,10 @@ class ParseWaterNetwork(object):
                     elif len(current) == 7: # at clocktime
                         fire_time = clock_time_to_sec(current[5], current[6])
                         control_obj = wntr.network.TimeControl(wn, fire_time, 'SHIFTED_TIME', True, action_obj)
+                        control_name = ''
+                        for i in xrange(len(current)-1):
+                            control_name = control_name + current[i]
+                        control_name = control_name + str(fire_time)
                 wn.add_control(control_name, control_obj)
 
         f.close()

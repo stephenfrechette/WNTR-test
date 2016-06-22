@@ -69,7 +69,7 @@ class WaterNetworkSimulator(object):
         except KeyError:
             raise KeyError("Not a valid node name")
         # Make sure node object is a Junction
-        assert(isinstance(node, Junction)), "Demands can only be calculated for Junctions"
+        assert (isinstance(node, Junction)), "Demands can only be calculated for Junctions"
         # Calculate demand pattern values
         base_demand = node.base_demand
         pattern_name = node.demand_pattern_name
@@ -79,10 +79,11 @@ class WaterNetworkSimulator(object):
         pattern_length = len(pattern_list)
         offset = self._wn.options.pattern_start
 
-        assert(offset == 0.0), "Only 0.0 Pattern Start time is currently supported. "
+        assert (offset == 0.0), "Only 0.0 Pattern Start time is currently supported. "
 
-        demand_times_minutes = range(start_time, end_time + self._wn.options.hydraulic_timestep, self._wn.options.hydraulic_timestep)
-        demand_pattern_values = [base_demand*i for i in pattern_list]
+        demand_times_minutes = range(start_time, end_time + self._wn.options.hydraulic_timestep,
+                                     self._wn.options.hydraulic_timestep)
+        demand_pattern_values = [base_demand * i for i in pattern_list]
 
         demand_values = []
         for t in demand_times_minutes:
@@ -93,6 +94,63 @@ class WaterNetworkSimulator(object):
             demand_values.append(demand_pattern_values[pattern_index])
 
         return demand_values
+
+    def get_node_head(self, node_name, start_time=None, end_time=None):
+        """
+        Calculates the demands at a node based on the demand pattern.
+
+        Parameters
+        ----------
+        node_name : string
+            Name of the node.
+        start_time : float
+            The start time of the demand values requested. Default is 0 sec.
+        end_time : float
+            The end time of the demand values requested. Default is the simulation end time in sec.
+
+        Returns
+        -------
+        demand_list : list of floats
+           A list of demand values at each hydraulic timestep.
+        """
+
+        # Set start and end time for demand values to be returned
+        if start_time is None:
+            start_time = 0
+        if end_time is None:
+            end_time = self._wn.options.duration
+
+        # Get node object
+        try:
+            node = self._wn.get_node(node_name)
+        except KeyError:
+            raise KeyError("Not a valid node name")
+        # Make sure node object is a Junction
+        assert (isinstance(node, Reservoir)), "Heads can only be calculated for Junctions"
+        # Calculate demand pattern values
+        base_demand = node.base_head
+        pattern_name = node.head_pattern_name
+        if pattern_name is not None:
+            pattern_list = self._wn.get_pattern(pattern_name)
+            pattern_length = len(pattern_list)
+            offset = self._wn.options.pattern_start
+
+            assert (offset == 0.0), "Only 0.0 Pattern Start time is currently supported. "
+
+            head_times_minutes = range(start_time, end_time + self._wn.options.hydraulic_timestep,
+                                     self._wn.options.hydraulic_timestep)
+            head_pattern_values = [base_demand * i for i in pattern_list]
+
+            head_values = []
+            for t in head_times_minutes:
+                # Modulus with the last pattern time to get time within pattern range
+                pattern_index = t / self._wn.options.pattern_timestep
+                # Modulus with the pattern time step to get the pattern index
+                pattern_index = pattern_index % pattern_length
+                head_values.append(head_pattern_values[pattern_index])
+
+            return head_values
+        return None
 
     def _get_link_type(self, name):
         if isinstance(self._wn.get_link(name), Pipe):

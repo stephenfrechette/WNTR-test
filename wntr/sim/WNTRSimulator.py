@@ -74,6 +74,7 @@ class WNTRSimulator(WaterNetworkSimulator):
         self.time_per_step = []
 
         self._get_demand_dict()
+        self._get_head_dict()
 
         tank_controls = self._wn._get_all_tank_controls()
         cv_controls = self._wn._get_cv_controls()
@@ -142,6 +143,8 @@ class WNTRSimulator(WaterNetworkSimulator):
                         break
                     last_backup_time = backup_time
 
+            logger.info('simulation time = %s, trial = %d', self.get_time(), trial)
+
             # Prepare for solve
             #model.reset_isolated_junctions()
             isolated_junctions, isolated_links = self._get_isolated_junctions_and_links()
@@ -150,6 +153,7 @@ class WNTRSimulator(WaterNetworkSimulator):
             if not first_step:
                 model.update_tank_heads()
             model.update_junction_demands(self._demand_dict)
+            model.update_reservoir_heads(self._head_dict)
             model.set_network_inputs_by_id()
             model.set_jacobian_constants()
 
@@ -235,6 +239,19 @@ class WNTRSimulator(WaterNetworkSimulator):
             demand_values = self.get_node_demand(node_name)
             for t in range(self._n_timesteps):
                 self._demand_dict[(node_name, t)] = demand_values[t]
+
+    def _get_head_dict(self):
+
+        # Number of hydraulic timesteps
+        self._n_timesteps = int(round(self._wn.options.duration / self._wn.options.hydraulic_timestep)) + 1
+
+        # Get all head for complete time interval
+        self._head_dict = {}
+        for node_name, node in self._wn.nodes(Reservoir):
+            head_values = self.get_node_head(node_name)
+            if head_values is not None:
+                for t in range(self._n_timesteps):
+                    self._head_dict[(node_name, t)] = head_values[t]
 
     def _check_controls(self, presolve, last_backup_time=None):
         if presolve:
@@ -384,3 +401,6 @@ class WNTRSimulator(WaterNetworkSimulator):
 
         sys.setrecursionlimit(starting_recursion_limit)
         return isolated_junctions, isolated_links
+
+    def get_control_log(self):
+        return self._control_log

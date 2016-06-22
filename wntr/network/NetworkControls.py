@@ -31,6 +31,7 @@ logger = logging.getLogger('wntr.network.NetworkControls')
 #    Open links connected to tanks if the tank head is smaller than the maximum head minus a tolerance
 #    Open pumps if power comes back up
 #    Start/stop leaks
+#    Changes in pump speeds
 # 1:
 #    Close links connected to tanks if the tank head is less than the minimum head (except check valves and pumps than
 #    only allow flow in).
@@ -708,17 +709,18 @@ class _CheckValveHeadControl(Control):
         else:
             headloss = self._start_node.head - self._end_node.head
         if self._operation(headloss, self._threshold):
-            return (True, 0)
+            return (False, None)
         return (False, None)
         
     def _FireControlActionImpl(self, wnm, priority, log, t):
         if self._priority == priority:
             self._control_action.FireControlAction(self.name, log, t)
-            
+
 class _PRVControl(Control):
     """
 
     """
+
     def __init__(self, wnm, valve, Htol, Qtol, close_control_action, open_control_action, active_control_action):
         self.name = 'blah'
         self._priority = 3
@@ -733,12 +735,12 @@ class _PRVControl(Control):
         self._end_node_name = valve.end_node()
         self._start_node = wnm.get_node(self._start_node_name)
         self._end_node = wnm.get_node(self._end_node_name)
-        self._resistance_coefficient = 0.0826*0.02*self._valve.diameter**(-5)*self._valve.diameter*2.0
+        self._resistance_coefficient = 0.0826 * 0.02 * self._valve.diameter ** (-5) * self._valve.diameter * 2.0
 
-    @classmethod
-    def WithTarget(self, source_obj, source_attribute, source_attribute_prev, operation, threshold, target_obj, target_attribute, target_value):
-        ca = ControlAction(target_obj, target_attribute, target_value)
-        return ConditionalControl(source_obj, source_attribute, source_attribute_prev, operation, threshold, ca)
+    # @classmethod
+    # def WithTarget(self, source_obj, source_attribute, source_attribute_prev, operation, threshold, target_obj, target_attribute, target_value):
+    #     ca = ControlAction(target_obj, target_attribute, target_value)
+    #     return ConditionalControl(source_obj, source_attribute, source_attribute_prev, operation, threshold, ca)
 
     def _IsControlActionRequiredImpl(self, wnm, presolve_flag):
         """
@@ -754,7 +756,7 @@ class _PRVControl(Control):
             if self._valve.flow < -self._Qtol:
                 self._action_to_fire = self._close_control_action
                 return (True, 0)
-            Hl = self._resistance_coefficient*abs(self._valve.flow)**2
+            Hl = self._resistance_coefficient * abs(self._valve.flow) ** 2
             if self._start_node.head < head_setting + Hl - self._Htol:
                 self._action_to_fire = self._open_control_action
                 return (True, 0)
@@ -763,7 +765,7 @@ class _PRVControl(Control):
             if self._valve.flow < -self._Qtol:
                 self._action_to_fire = self._close_control_action
                 return (True, 0)
-            Hl = self._resistance_coefficient*abs(self._valve.flow)**2
+            Hl = self._resistance_coefficient * abs(self._valve.flow) ** 2
             if self._start_node.head > head_setting + Hl + self._Htol:
                 self._action_to_fire = self._active_control_action
                 return (True, 0)
@@ -777,11 +779,127 @@ class _PRVControl(Control):
                 return (True, 0)
             return (False, None)
 
+
     def _FireControlActionImpl(self, wnm, priority, log, t):
         """
         This implements the derived method from Control. Please see
         the Control class and the documentation for this class.
         """
-        if self._priority==priority:
+        if self._priority == priority:
+            self._action_to_fire.FireControlAction(self.name, log, t)
+
+class _PSVControl(Control):
+    """
+
+    """
+
+    def __init__(self, wnm, valve, Htol, Qtol, close_control_action, open_control_action, active_control_action):
+        self.name = 'blah'
+        self._priority = 3
+        self._valve = valve
+        self._Htol = Htol
+        self._Qtol = Qtol
+        self._close_control_action = close_control_action
+        self._open_control_action = open_control_action
+        self._active_control_action = active_control_action
+        self._action_to_fire = None
+        self._start_node_name = valve.start_node()
+        self._end_node_name = valve.end_node()
+        self._start_node = wnm.get_node(self._start_node_name)
+        self._end_node = wnm.get_node(self._end_node_name)
+        self._resistance_coefficient = 0.0826 * 0.02 * self._valve.diameter ** (-5) * self._valve.diameter * 2.0
+
+    def _IsControlActionRequiredImpl(self, wnm, presolve_flag):
+        """
+        This implements the derived method from Control. Please see
+        the Control class and the documentation for this class.
+        """
+        if presolve_flag:
+            return (False, None)
+
+        head_setting = self._valve.setting + self._end_node.elevation
+
+        if self._valve._status == wntr.network.LinkStatus.active:
+            if self._valve.flow < -self._Qtol:
+                self._action_to_fire = self._close_control_action
+                return (True, 0)
+            Hl = self._resistance_coefficient * abs(self._valve.flow) ** 2
+            if self._end_node.head > head_setting + Hl - self._Htol:
+                self._action_to_fire = self._open_control_action
+                return (True, 0)
+            return (False, None)
+        elif self._valve._status == wntr.network.LinkStatus.opened:
+            if self._valve.flow < -self._Qtol:
+                self._action_to_fire = self._close_control_action
+                return (True, 0)
+            Hl = self._resistance_coefficient * abs(self._valve.flow) ** 2
+            if self._end_node.head < head_setting + Hl + self._Htol:
+                self._action_to_fire = self._active_control_action
+                return (True, 0)
+            return (False, None)
+        elif self._valve._status == wntr.network.LinkStatus.closed:
+            if self._end_node.head < self._start_node.head + self._Htol and self._end_node.head > head_setting - self._Htol:
+                self._action_to_fire = self._open_control_action
+                return (True, 0)
+            if self._end_node.head < self._start_node.head + self._Htol and self._start_node.head > head_setting - self._Htol:
+                self._action_to_fire = self._active_control_action
+                return (True, 0)
+            return (False, None)
+
+
+    def _FireControlActionImpl(self, wnm, priority, log, t):
+        """
+        This implements the derived method from Control. Please see
+        the Control class and the documentation for this class.
+        """
+        if self._priority == priority:
+            self._action_to_fire.FireControlAction(self.name, log, t)
+
+
+
+class _FCVControl(Control):
+    """
+
+    """
+    def __init__(self, wnm, valve, open_control_action, active_control_action):
+        self.name = 'FCV'
+        self.Htol = Htol
+        self._priority = 3
+        self._valve = valve
+        self._open_control_action = open_control_action
+        self._active_control_action = active_control_action
+        self._action_to_fire = None
+        self._start_node_name = valve.start_node()
+        self._end_node_name = valve.end_node()
+        self._start_node = wnm.get_node(self._start_node_name)
+        self._end_node = wnm.get_node(self._end_node_name)
+
+    def _IsControlActionRequiredImpl(self, wnm, presolve_flag):
+        if presolve_flag:
+            return(False, None)
+
+        if self._valve._status == wntr.network.LinkStatus.active:
+            if self._start_node.head < self._end_node.head:
+                self._action_to_fire = self._open_control_action
+                print 'activating'
+                print self._start_node.head
+                print self._end_node.head
+                return (True, 0)
+            return (False, None)
+        if self._valve._status == wntr.network.LinkStatus.opened:
+            if self._start_node.head >= self._end_node.head + self.Htol:
+                self._action_to_fire = self._active_control_action
+                print 'opening'
+                print self._start_node.head
+                print self._end_node.head
+                return (True, 0)
+            return (False, None)
+
+    def _FireControlActionImpl(self, wnm, priority, log, t):
+        """
+        This implements the derived method from Control. Please see
+        the Control class and the documentation for this class.
+        """
+        if self._priority == priority:
             self._action_to_fire.FireControlAction(self.name, log, t)
 
