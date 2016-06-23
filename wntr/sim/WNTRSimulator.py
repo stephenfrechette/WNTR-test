@@ -11,18 +11,18 @@ TODO: Remove deep copy methods from WaterNetworkModel object
 TODO: Do a single smoothing for all leaks similar to what is done for Hazen-Williams.
 """
 
-from wntr import *
-import numpy as np
-import scipy.sparse as sparse
-import warnings
+#from wntr import *
+#import numpy as np
+#import scipy.sparse as sparse
+#import warnings
 from WaterNetworkSimulator import *
 from HydraulicModel import *
 from wntr.network.WaterNetworkModel import *
 from NewtonSolver import *
 from NetworkResults import *
 import time
-import copy
-import networkx as nx
+#import copy
+#import networkx as nx
 import sys
 
 import logging
@@ -55,7 +55,7 @@ class WNTRSimulator(WaterNetworkSimulator):
         s-=m*60
         return str(h)+':'+str(m)+':'+str(s)
 
-    def run_sim(self,solver_options={}, convergence_error=True):
+    def run_sim(self, solver_options = {}, convergence_error=True):
         """
         Method to run an extended period simulation
 
@@ -123,6 +123,8 @@ class WNTRSimulator(WaterNetworkSimulator):
         trial = -1
         max_trials = self._wn.options.trials
         resolve = False
+        start_step_time = time.time()
+        controls_to_activate = []
 
         while True:
 
@@ -192,7 +194,7 @@ class WNTRSimulator(WaterNetworkSimulator):
                 self._control_log.reset_changes()
                 self._fire_controls(all_controls_to_activate, self._control_log, self._wn.sim_time)
 
-                changes_made_flag, objects_changed = self._control_log.check_for_changes(self._wn.sim_time)
+                changes_made_flag, objects_changed, self._pump_speed_changed  = self._control_log.check_for_changes(self._wn.sim_time)
                 if changes_made_flag:
                     self._update_internal_graph(self._wn.sim_time, objects_changed)
                     if trial > max_trials:
