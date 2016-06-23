@@ -940,6 +940,7 @@ class WaterNetworkModel(object):
         -------
         A list of link names connected to the node
         """
+        edges = []
         if flag.upper() == 'ALL':
             in_edges = self._graph.in_edges(node_name, data=False, keys=True)
             out_edges = self._graph.out_edges(node_name, data=False, keys=True)
@@ -1037,7 +1038,7 @@ class WaterNetworkModel(object):
         node_attribute_dict = {}
         for name, node in self.nodes(node_type):
             try:
-                if operation == None and value == None:
+                if operation is None and value is None:
                     node_attribute_dict[name] = getattr(node, attribute)
                 else:
                     node_attribute = getattr(node, attribute)
@@ -1079,7 +1080,7 @@ class WaterNetworkModel(object):
         link_attribute_dict = {}
         for name, link in self.links(link_type):
             try:
-                if operation == None and value == None:
+                if operation is None and value is None:
                     link_attribute_dict[name] = getattr(link, attribute)
                 else:
                     link_attribute = getattr(link, attribute)
@@ -1182,7 +1183,7 @@ class WaterNetworkModel(object):
         -------
         node_name, node
         """
-        if node_type==None:
+        if node_type is None:
             for node_name, node in self._nodes.iteritems():
                 yield node_name, node
         elif node_type==Junction:
@@ -1243,7 +1244,7 @@ class WaterNetworkModel(object):
         -------
         link_name, link
         """
-        if link_type==None:
+        if link_type is None:
             for link_name, link in self._links.iteritems():
                 yield link_name, link
         elif link_type==Pipe:
@@ -1656,10 +1657,17 @@ class WaterNetworkModel(object):
 
         # Print junctions information
         f.write('[JUNCTIONS]\n')
+        text_format = '{:20} {:12f} {:12f} {:24} {:>3s}\n'
         label_format = '{:20} {:>12s} {:>12s} {:24}\n'
         f.write(label_format.format(';ID', 'Elevation', 'Demand', 'Pattern'))
         for junction_name, junction in self.nodes(Junction):
-            f.write('%s\n'%junction.to_inp_string(flowunit))
+            if junction.base_demand == 0.0:
+                f.write('{:20} {:12f} {:12s} {:24} {:>3s}\n'.format(junction_name,convert('Elevation', flowunit, junction.elevation, False),'0.0', '', ';'))
+            elif junction.demand_pattern_name is not None:
+                f.write(text_format.format(junction_name, convert('Elevation', flowunit, junction.elevation, MKS=False),convert('Demand', flowunit, junction.base_demand, False),junction.demand_pattern_name, ';'))
+            else:
+                f.write(text_format.format(junction_name, convert('Elevation', flowunit, junction.elevation, False),convert('Demand', flowunit, junction.base_demand, False), '', ';'))
+            #f.write('%s\n'%junction.to_inp_string(flowunit))
 
         # Print reservoir information
         f.write('[RESERVOIRS]\n')
@@ -2004,7 +2012,7 @@ class LinkTypes(object):
         
         Examples
         --------
-        >>> Linktypes.link_type_to_str(LinkTypes.pump)
+        >>> LinkTypes.link_type_to_str(LinkTypes.pump)
         'Pump'
         """
         if value == self.pipe:
@@ -2082,13 +2090,12 @@ class Node(object):
         -----------
         name : string
             Name of the node
-        node_type : string
-            Type of the node. Options are 'Junction', 'Tank', or 'Reservoir'
 
         Examples
         ---------
         >>> node2 = Node('North Lake','Reservoir')
         """
+
         self._name = name
         self.prev_head = None
         self.head = None
@@ -2127,8 +2134,6 @@ class Link(object):
         ----------
         link_name : string
             Name of the link
-        link_type : string
-            Type of the link. Options are 'Pipe', 'Valve', or 'Pump'
         start_node_name : string
              Name of the start node
         end_node_name : string
@@ -2236,7 +2241,7 @@ class Junction(Node):
            abs(self.minimum_pressure - other.minimum_pressure)<1e-10:
             return True
         return False
-
+    """
     def to_inp_string(self, flowunit):
         text_format = '{:20} {:12f} {:12f} {:24} {:>3s}'
         if self.base_demand == 0.0:
@@ -2245,7 +2250,7 @@ class Junction(Node):
             return text_format.format(self._name, convert('Elevation',flowunit,self.elevation,MKS=False), convert('Demand',flowunit,self.base_demand,False), self.demand_pattern_name, ';')
         else:
             return text_format.format(self._name, convert('Elevation',flowunit,self.elevation,False), convert('Demand',flowunit,self.base_demand,False), '', ';')
-        
+    """
 
     def add_leak(self, wn, area, discharge_coeff = 0.75, start_time=None, end_time=None):
         """Method to add a leak to a junction. Leaks are modeled by:
@@ -2748,8 +2753,7 @@ class Pump(Link):
 
         Parameters
         ----------
-        pump_name : string
-            Name of the pump
+
 
         Returns
         -------
@@ -2766,12 +2770,12 @@ class Pump(Link):
             C = 2
         # 3-Point curve
         elif self.curve.num_points == 3:
-            Q_1 = self.curve.points[0][0]
-            H_1 = self.curve.points[0][1]
-            Q_2 = self.curve.points[1][0]
-            H_2 = self.curve.points[1][1]
-            Q_3 = self.curve.points[2][0]
-            H_3 = self.curve.points[2][1]
+            Q_1 = self.curve.points[0][0]*self.speed
+            H_1 = self.curve.points[0][1]*(self.speed ** 2)
+            Q_2 = self.curve.points[1][0]*self.speed
+            H_2 = self.curve.points[1][1]*(self.speed ** 2)
+            Q_3 = self.curve.points[2][0]*self.speed
+            H_3 = self.curve.points[2][1]*(self.speed ** 2)
 
             # When the first points is at zero flow
             if Q_1 == 0.0:
@@ -2791,8 +2795,10 @@ class Pump(Link):
 
         # Multi-point curve
         else:
-            raise RuntimeError("Coefficient for Multipoint pump curves cannot be generated. ")
+            raise RuntimeError('Coefficient for Multipoint pump curves cannot be generated. ')
 
+        if A<=0 or B<0 or C<=0:
+            raise RuntimeError('Value of pump head curve coefficient is negative, which is not allowed. \nPump: {0} \nA: {1} \nB: {2} \nC:{3}'.format(self.name(),A,B,C))
         return (A, B, C)
 
     def get_design_flow(self):

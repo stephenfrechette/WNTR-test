@@ -8,6 +8,7 @@ TODO: Optionally add weights to nodes when evaluating metrics (e.g., a node with
 TODO: Valves should not be placed anywhere such that controls are added that act on the internal status? For example, valves should not be placed next to tanks?
 TODO: What happens if, for example, someone adds a pipe with the same name as a pump?
 TODO: Remove deep copy methods from WaterNetworkModel object
+TODO: Do a single smoothing for all leaks similar to what is done for Hazen-Williams.
 """
 
 from wntr import *
@@ -131,11 +132,12 @@ class WNTRSimulator(WaterNetworkSimulator):
             if not resolve:
                 trial = 0
                 last_backup_time = np.inf
+                self._pump_speed_changed = False
                 while True:
                     backup_time, controls_to_activate = self._check_controls(presolve=True,last_backup_time=last_backup_time)
                     self._control_log.reset_changes()
                     self._fire_controls(controls_to_activate, self._control_log, self._wn.sim_time)
-                    changes_made_flag, objects_changed = self._control_log.check_for_changes(self._wn.sim_time)
+                    changes_made_flag, objects_changed, self._pump_speed_changed = self._control_log.check_for_changes(self._wn.sim_time)
                     if changes_made_flag == True:
                         self._update_internal_graph(self._wn.sim_time, objects_changed)
                         self._wn.sim_time -= backup_time
@@ -153,6 +155,7 @@ class WNTRSimulator(WaterNetworkSimulator):
             # model.identify_isolated_junctions()
             if not first_step:
                 model.update_tank_heads()
+            model.update_pump_curves(self._pump_speed_changed)
             model.update_junction_demands(self._demand_dict)
             model.update_reservoir_heads(self._head_dict)
             model.set_network_inputs_by_id()
@@ -184,8 +187,8 @@ class WNTRSimulator(WaterNetworkSimulator):
             resolve, resolve_controls_to_activate = self._check_controls(presolve=False)
             if resolve or solver_status==0:
                 trial += 1
-                #all_controls_to_activate = controls_to_activate+resolve_controls_to_activate
-                all_controls_to_activate = resolve_controls_to_activate
+                all_controls_to_activate = controls_to_activate+resolve_controls_to_activate
+                #all_controls_to_activate = resolve_controls_to_activate
                 self._control_log.reset_changes()
                 self._fire_controls(all_controls_to_activate, self._control_log, self._wn.sim_time)
 

@@ -97,8 +97,8 @@ class HydraulicModel(object):
         # self.hw_q1 = 0.00349347323944
         # self.hw_q2 = 0.00549347323944
         # self.hw_m = 0.01
-        self.hw_q1 = 0.0001
-        self.hw_q2 = 0.0002
+        self.hw_q1 = 0.0002
+        self.hw_q2 = 0.0004
         self.hw_m = 0.001
         x1 = self.hw_q1
         x2 = self.hw_q2
@@ -118,6 +118,9 @@ class HydraulicModel(object):
         self.pump_q2 = 1.0e-8
 
         # constants for the modified pdd function
+        # I have created plots of the PDD function with these
+        # parameters, and they look pretty good. Additionally,
+        # the smoothing is not very sensitive to Pmin or Pnom.
         self._pdd_smoothing_delta = 0.2
         self._slope_of_pdd_curve = 1e-11
 
@@ -342,6 +345,7 @@ class HydraulicModel(object):
         self.head_curve_coefficients = {}
         self.max_pump_flows = {}
         self.pump_poly_coefficients = {}  # {pump_id: (a,b,c,d)} a*x**3 + b*x**2 + c*x + d
+        self.pump_line_params = {} # {pump_id: (q_bar, h_bar)} h = pump_m*(q-q_bar)+h_bar
         self.pump_powers = {}
 
         for link_name, link in self._wn.links():
@@ -364,9 +368,13 @@ class HydraulicModel(object):
                 if link.info_type == 'HEAD':
                     A, B, C = link.get_head_curve_coefficients()
                     self.head_curve_coefficients[link_id] = (A, B, C)
-                    self.max_pump_flows[link_id] = (A/B)**(1.0/C)
-                    a, b, c, d = self.get_pump_poly_coefficients(A, B, C)
-                    self.pump_poly_coefficients[link_id] = (a, b, c, d)
+                    self.max_pump_flows[link_id] = (A / B) ** (1.0 / C)
+                    if C <= 1:
+                        a, b, c, d = self.get_pump_poly_coefficients(A, B, C)
+                        self.pump_poly_coefficients[link_id] = (a, b, c, d)
+                    else:
+                        q_bar, h_bar = self.get_pump_line_params(A, B, C)
+                        self.pump_line_params[link_id] = (q_bar, h_bar)
                 elif link.info_type == 'POWER':
                     self.pump_powers[link_id] = link.power
                     self.max_pump_flows[link_id] = None
@@ -706,16 +714,28 @@ class HydraulicModel(object):
             if self.isolated_link_array[link_id] == 1 or self.closed_link_array[link_id] == 0:
                 self.jac_G.data[link_id] = 1.0
             else:
-                if flows[link_id] <= self.pump_q1:
-                    self.jac_G.data[link_id] = self.pump_m
-                elif flows[link_id] <= self.pump_q2:
-                    a,b,c,d = self.pump_poly_coefficients[link_id]
-                    self.jac_G.data[link_id] = (3.0 * a * flows[link_id] ** 2 + 2.0 * b * flows[link_id] + c)
+                A,B,C = self.head_curve_coefficients[link_id]
+                if C > 1:
+                    q_bar, h_bar = self.pump_line_params[link_id]
+                    if flows[link_id] >= q_bar:
+                        self.jac_G.data[link_id] = (-B * C * flows[link_id] ** (C - 1.0))
+                    else:
+                        self.jac_G.data[link_id] = self.pump_m
                 else:
+                    """
                     name = self._link_id_to_name[link_id]
                     link = self._wn.get_link(name)
                     A, B, C = link.get_head_curve_coefficients()
                     self.jac_G.data[link_id] = (-B * C * flows[link_id] ** (C - 1.0))
+                    """
+                    if flows[link_id] <= self.pump_q1:
+                        self.jac_G.data[link_id] = self.pump_m
+                    elif flows[link_id] <= self.pump_q2:
+                        a,b,c,d = self.pump_poly_coefficients[link_id]
+                        self.jac_G.data[link_id] = (3.0 * a * flows[link_id] ** 2 + 2.0 * b * flows[link_id] + c)
+                    else:
+                        self.jac_G.data[link_id] = (-B * C * flows[link_id] ** (C - 1.0))
+
                 # self.jac_G_inv.data[link_id] = 1.0 / self.jac_G_inv.data[link_id]
         for link_id in self.power_pump_ids:
             if self.isolated_link_array[link_id] == 1 or self.closed_link_array[link_id] == 0:
@@ -847,6 +867,7 @@ class HydraulicModel(object):
                     end_node_id = self.link_end_nodes[link_id]
 
                     if link_id in self.head_curve_coefficients.keys():
+                        """
                         if link_flow <= self.pump_q1:
                             name = self._link_id_to_name[link_id]
                             link = self._wn.get_link(name)
@@ -863,6 +884,23 @@ class HydraulicModel(object):
                             link = self._wn.get_link(name)
                             A, B, C = link.get_head_curve_coefficients()
                             pump_headgain = 1.0*A - B*link_flow**C
+                        """
+                        A,B,C = self.head_curve_coefficients[link_id]
+                        if C > 1:
+                            q_bar, h_bar = self.pump_line_params[link_id]
+                            if link_flow >= q_bar:
+                                pump_headgain = A - B*link_flow**C
+                            else:
+                                pump_headgain = self.pump_m*(link_flow - q_bar) + h_bar
+                        else:
+                            if link_flow <= self.pump_q1:
+                                pump_headgain = self.pump_m*link_flow + A
+                            elif link_flow <= self.pump_q2:
+                                a, b, c, d = self.pump_poly_coefficients[link_id]
+                                pump_headgain = a*link_flow**3 + b*link_flow**2 + c*link_flow + d
+                            else:
+                                pump_headgain = A - B*link_flow**C
+
                         self.headloss_residual[link_id] = pump_headgain - (head[end_node_id] - head[start_node_id])
                     elif link_id in self.pump_powers.keys():
                         self.headloss_residual[link_id] = self.pump_powers[link_id] + (head_diff_vector[link_id])*flow[link_id]*self._g*1000.0
@@ -1290,6 +1328,21 @@ class HydraulicModel(object):
             for reservoir_name, reservoir in self._wn.nodes(Reservoir):
                 reservoir.head = head_dict[(reservoir_name,t)]
 
+    def update_pump_curves(self, pump_speed_changed):
+        if pump_speed_changed:
+            for link_id, link in self._pump_ids:
+                if link.info_type == 'HEAD':
+                    A, B, C = link.get_head_curve_coefficients()
+                    self.head_curve_coefficients[link_id] = (A, B, C)
+                    self.max_pump_flows[link_id] = (A / B) ** (1.0 / C)
+                    if C <= 1:
+                        a, b, c, d = self.get_pump_poly_coefficients(A, B, C)
+                        self.pump_poly_coefficients[link_id] = (a, b, c, d)
+                    else:
+                        q_bar, h_bar = self.get_pump_line_params(A, B, C)
+                        self.pump_line_params[link_id] = (q_bar, h_bar)
+
+
     def reset_isolated_junctions(self):
         self.isolated_junction_names = set()
         self.isolated_link_names = set()
@@ -1485,6 +1538,11 @@ class HydraulicModel(object):
             warnings.warn('Pump smoothing polynomial is not monotonically decreasing.')
             return (a,b,c,d)
 
+    def get_pump_line_params(self, A, B, C):
+        q_bar = (self.pump_m/(-B*C))**(1.0/(C-1.0))
+        h_bar = A - B*q_bar**C
+        return q_bar, h_bar
+        
     def print_jacobian(self, jacobian):
         #np.set_printoptions(threshold='nan')
         #print jacobian.toarray()
