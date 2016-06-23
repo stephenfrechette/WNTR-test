@@ -180,8 +180,8 @@ class WNTRSimulator(WaterNetworkSimulator):
             resolve, resolve_controls_to_activate = self._check_controls(presolve=False)
             if resolve or solver_status==0:
                 trial += 1
-                #all_controls_to_activate = controls_to_activate+resolve_controls_to_activate
-                all_controls_to_activate = resolve_controls_to_activate
+                all_controls_to_activate = controls_to_activate+resolve_controls_to_activate
+                #all_controls_to_activate = resolve_controls_to_activate
                 self._control_log.reset_changes()
                 self._fire_controls(all_controls_to_activate, self._control_log, self._wn.sim_time)
 
