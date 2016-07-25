@@ -38,5 +38,8 @@ class TestExamples(unittest.TestCase):
             tmp_flag = call([sys.executable, os.path.join(resilienceMainDir,'examples',f)])
             if tmp_flag == 1:
                 flag = 1
+            print '***********************************'
+            print f, tmp_flag
+            print '***********************************'
         os.chdir(cwd)
         self.assertEqual(flag,0)
