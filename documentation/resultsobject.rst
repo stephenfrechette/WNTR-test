@@ -1,7 +1,7 @@
 .. _simulation_results:
 
-Simulation results
-====================
+Simulation results (*DRAFT*)
+=============================
 Simulation results are stored in Pandas Panels.  
 For more information on Pandas, see http://pandas.pydata.org/.
 The example **simulation_results.py** demonstrates use cases of simulation results.
@@ -26,6 +26,7 @@ Each Panel is indexed by item, major_axis, and minor_axis.
 	* velocity
 	* flowrate
 	* type
+	* status
 	
 * major_axis
 	Time in seconds from the start of the simulation
