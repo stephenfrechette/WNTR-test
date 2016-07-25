@@ -303,4 +303,4 @@ class TestPerformance(unittest.TestCase):
         self.assertLess(np.std(flow_diff_list), .003)
         self.assertLess(t1-t0, 60)
         self.assertLess(np.average(sim.time_per_step), .25)
-        self.assertEqual(len(sim.time_per_step), 177)
+        self.assertEqual(len(sim.time_per_step), 154)
